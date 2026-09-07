@@ -22,7 +22,7 @@ import reactor.core.publisher.Mono;
 public class PasswordSessionManager
         implements TrinoSessionManager
 {
-    public static final String TRINO_UI_LOGIN_PATH = "/ui/login";
+    public static final String TRINO_UI_LOGIN_PATH = "/ui/auth/login";
     public static final String TRINO_UI_COOKIE = "Trino-UI-Token";
 
     private final TrinoAuthProperties authProps;
@@ -51,8 +51,8 @@ public class PasswordSessionManager
 
         String cookie = webClient.post()
                 .uri(url)
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body(createLoginForm())
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(Map.of("username", authProps.getUsername(), "password", authProps.getPassword()))
                 .exchangeToMono(response -> handleLoginResponse(response, coordinatorUrl))
                 .block();
 
@@ -60,15 +60,9 @@ public class PasswordSessionManager
         return cookie;
     }
 
-    private BodyInserters.FormInserter<String> createLoginForm()
-    {
-        return fromFormData("username", authProps.getUsername())
-                .with("password", authProps.getPassword());
-    }
-
     private Mono<String> handleLoginResponse(ClientResponse response, String coordinatorUrl)
     {
-        if (response.statusCode().is3xxRedirection()) {
+        if (response.statusCode().is3xxRedirection() || response.statusCode().value() == 204) {
             return Mono.just(getSessionCookie(response, coordinatorUrl));
         }
         return Mono.error(loginFailedError(response, coordinatorUrl));
